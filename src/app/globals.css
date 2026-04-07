@@ -26,6 +26,42 @@ body {
   font-family: var(--font-space-grotesk), sans-serif;
 }
 
+.crm-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.875rem 1rem;
+  color: #f8fafc;
+  outline: none;
+}
+
+.crm-input::placeholder {
+  color: #94a3b8;
+}
+
+.crm-input:focus {
+  border-color: rgba(103, 232, 249, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+.crm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #67e8f9, #86efac);
+  padding: 0.8rem 1.15rem;
+  font-weight: 600;
+  color: #08111d;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.crm-button:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
 .hero-grid {
   background-image: linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
