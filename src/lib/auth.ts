@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { compare } from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
+import { NextResponse } from "next/server";
 
 import { loadDatabase } from "@/lib/db";
 
@@ -58,6 +59,25 @@ export async function createSession(user: SessionUser) {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
+}
+
+export async function createSessionResponse(user: SessionUser, requestUrl: string) {
+  const token = await new SignJWT(user)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(getSecret());
+
+  const response = NextResponse.redirect(new URL("/dashboard", requestUrl));
+  response.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  return response;
 }
 
 export async function deleteSession() {

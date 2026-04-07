@@ -1,4 +1,6 @@
-import { loginAction } from "@/app/actions/auth";
+import { redirect } from "next/navigation";
+
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,11 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  const session = await getSession();
+  if (session) {
+    redirect("/dashboard");
+  }
+
   const params = await searchParams;
   const hasError = params.error === "invalid_credentials";
 
@@ -27,7 +34,7 @@ export default async function LoginPage({
           </div>
         ) : null}
 
-        <form action={loginAction} className="mt-6 space-y-4">
+        <form action="/api/login" method="post" className="mt-6 space-y-4">
           <input
             name="email"
             type="email"
