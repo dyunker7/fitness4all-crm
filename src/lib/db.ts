@@ -55,11 +55,33 @@ export type UserRecord = {
   createdAt: string;
 };
 
+export type ConversationRecord = {
+  id: string;
+  contactId: string;
+  channel: "SMS" | "Email" | "Phone" | "Instagram" | "Facebook" | "WhatsApp" | "Website";
+  ownerName: string;
+  status: "On track" | "At risk";
+  lastMessage: string;
+  nextResponseDueAt: string;
+  createdAt: string;
+};
+
+export type MessageRecord = {
+  id: string;
+  conversationId: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  sentBy: string;
+  createdAt: string;
+};
+
 export type CrmDatabase = {
   contacts: ContactRecord[];
   opportunities: OpportunityRecord[];
   tasks: TaskRecord[];
   users: UserRecord[];
+  conversations: ConversationRecord[];
+  messages: MessageRecord[];
 };
 
 const seededPasswordHash = hashSync("fitness4all123", 10);
@@ -109,6 +131,26 @@ const defaultDatabase: CrmDatabase = {
       createdAt: new Date().toISOString(),
     },
   ],
+  conversations: demoData.conversations.map((conversation, index) => ({
+    id: conversation.id,
+    contactId: demoData.contacts[index]?.id ?? demoData.contacts[0].id,
+    channel: conversation.channel,
+    ownerName: conversation.ownerName,
+    status: conversation.status,
+    lastMessage: conversation.lastMessage,
+    nextResponseDueAt: conversation.nextResponseDueAt,
+    createdAt: new Date().toISOString(),
+  })),
+  messages: demoData.conversations.map((conversation, index) => ({
+    id: `${conversation.id}-seed-1`,
+    conversationId: conversation.id,
+    direction: "inbound" as const,
+    body: conversation.lastMessage,
+    sentBy: demoData.contacts[index]
+      ? `${demoData.contacts[index].firstName} ${demoData.contacts[index].lastName}`
+      : "Lead",
+    createdAt: new Date().toISOString(),
+  })),
 };
 
 const candidatePaths = [
@@ -244,6 +286,30 @@ async function ensurePostgres() {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id TEXT PRIMARY KEY,
+          contact_id TEXT NOT NULL,
+          channel TEXT NOT NULL,
+          owner_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          last_message TEXT NOT NULL,
+          next_response_due_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          body TEXT NOT NULL,
+          sent_by TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
       const existingUsers = await sql`SELECT COUNT(*)::int AS count FROM users`;
       if (existingUsers[0].count === 0) {
         await savePostgresDatabase(defaultDatabase);
@@ -270,12 +336,14 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
     return structuredClone(defaultDatabase);
   }
 
-  const [contacts, opportunities, tasks, users] = await withTimeout(
+  const [contacts, opportunities, tasks, users, conversations, messages] = await withTimeout(
     Promise.all([
       sql`SELECT * FROM contacts ORDER BY created_at DESC`,
       sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
       sql`SELECT * FROM tasks ORDER BY created_at DESC`,
       sql`SELECT * FROM users ORDER BY created_at DESC`,
+      sql`SELECT * FROM conversations ORDER BY created_at DESC`,
+      sql`SELECT * FROM messages ORDER BY created_at ASC`,
     ]),
     "Postgres query",
   );
@@ -326,6 +394,24 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       passwordHash: row.password_hash,
       createdAt: row.created_at,
     })),
+    conversations: conversations.map((row) => ({
+      id: row.id,
+      contactId: row.contact_id,
+      channel: row.channel,
+      ownerName: row.owner_name,
+      status: row.status,
+      lastMessage: row.last_message,
+      nextResponseDueAt: row.next_response_due_at,
+      createdAt: row.created_at,
+    })),
+    messages: messages.map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      direction: row.direction,
+      body: row.body,
+      sentBy: row.sent_by,
+      createdAt: row.created_at,
+    })),
   };
 }
 
@@ -339,6 +425,8 @@ async function savePostgresDatabase(data: CrmDatabase) {
   await withTimeout(
     sql.begin(async (tx) => {
       await tx`DELETE FROM tasks`;
+      await tx`DELETE FROM messages`;
+      await tx`DELETE FROM conversations`;
       await tx`DELETE FROM opportunities`;
       await tx`DELETE FROM contacts`;
       await tx`DELETE FROM users`;
@@ -385,6 +473,29 @@ async function savePostgresDatabase(data: CrmDatabase) {
           ) VALUES (
             ${task.id}, ${task.title}, ${task.status}, ${task.relatedType},
             ${task.relatedId}, ${task.ownerName}, ${task.dueLabel}, ${task.createdAt}
+          )
+        `;
+      }
+
+      for (const conversation of data.conversations) {
+        await tx`
+          INSERT INTO conversations (
+            id, contact_id, channel, owner_name, status, last_message, next_response_due_at, created_at
+          ) VALUES (
+            ${conversation.id}, ${conversation.contactId}, ${conversation.channel},
+            ${conversation.ownerName}, ${conversation.status}, ${conversation.lastMessage},
+            ${conversation.nextResponseDueAt}, ${conversation.createdAt}
+          )
+        `;
+      }
+
+      for (const message of data.messages) {
+        await tx`
+          INSERT INTO messages (
+            id, conversation_id, direction, body, sent_by, created_at
+          ) VALUES (
+            ${message.id}, ${message.conversationId}, ${message.direction},
+            ${message.body}, ${message.sentBy}, ${message.createdAt}
           )
         `;
       }

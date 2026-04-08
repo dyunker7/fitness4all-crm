@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { LayoutDashboard, Users, BriefcaseBusiness } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  BriefcaseBusiness,
+  MessageCircleMore,
+} from "lucide-react";
 
 import { logoutAction } from "@/app/actions/auth";
 import { requireSession } from "@/lib/auth";
@@ -8,6 +13,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/opportunities", label: "Opportunities", icon: BriefcaseBusiness },
+  { href: "/inbox", label: "Inbox", icon: MessageCircleMore },
 ];
 
 export async function CrmShell({

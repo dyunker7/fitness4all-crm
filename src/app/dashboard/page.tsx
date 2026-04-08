@@ -5,6 +5,7 @@ import { StatCard, Surface } from "@/components/crm-cards";
 import {
   getDashboardSnapshot,
   getPipelineStages,
+  listConversations,
   listOpportunities,
   listTasks,
 } from "@/lib/crm";
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const snapshot = await getDashboardSnapshot();
+  const conversations = (await listConversations()).slice(0, 3);
   const opportunities = await listOpportunities();
   const tasks = (await listTasks()).slice(0, 5);
   const stages = getPipelineStages();
@@ -116,6 +118,25 @@ export default async function DashboardPage() {
                 {task.ownerName} · {task.dueLabel} · {task.status}
               </p>
             </div>
+          ))}
+        </div>
+      </Surface>
+
+      <Surface>
+        <h2 className="text-xl font-semibold text-white">Inbox priorities</h2>
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {conversations.map((conversation) => (
+            <Link
+              key={conversation.id}
+              href={`/inbox/${conversation.id}`}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/8"
+            >
+              <p className="font-medium text-white">{conversation.contactName}</p>
+              <p className="mt-1 text-sm text-slate-400">{conversation.channel}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {conversation.lastMessage}
+              </p>
+            </Link>
           ))}
         </div>
       </Surface>

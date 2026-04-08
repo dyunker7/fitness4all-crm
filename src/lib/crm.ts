@@ -61,6 +61,12 @@ const taskStatusSchema = z.object({
   status: z.enum(["Open", "Done"]),
 });
 
+const messageSchema = z.object({
+  conversationId: z.string().trim().min(1),
+  body: z.string().trim().min(1),
+  sentBy: z.string().trim().min(1),
+});
+
 export type CrmContact = {
   id: string;
   firstName: string;
@@ -99,6 +105,27 @@ export type CrmTask = {
   relatedId: string;
   ownerName: string;
   dueLabel: string;
+  createdAt: string;
+};
+
+export type CrmConversation = {
+  id: string;
+  contactId: string;
+  contactName: string;
+  channel: string;
+  ownerName: string;
+  status: "On track" | "At risk";
+  lastMessage: string;
+  nextResponseDueAt: string;
+  createdAt: string;
+};
+
+export type CrmMessage = {
+  id: string;
+  conversationId: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  sentBy: string;
   createdAt: string;
 };
 
@@ -202,6 +229,33 @@ export async function listTasks() {
 
       return a.status === "Open" ? -1 : 1;
     });
+}
+
+export async function listConversations() {
+  const database = await loadDatabase();
+
+  return database.conversations
+    .map((conversation) => {
+      const contact = database.contacts.find((item) => item.id === conversation.contactId);
+
+      return {
+        ...conversation,
+        contactName: contact
+          ? `${contact.firstName} ${contact.lastName}`
+          : "Unknown contact",
+      } satisfies CrmConversation;
+    })
+    .sort((a, b) => a.nextResponseDueAt.localeCompare(b.nextResponseDueAt));
+}
+
+export async function getConversationById(id: string) {
+  return (await listConversations()).find((item) => item.id === id) ?? null;
+}
+
+export async function listMessagesForConversation(conversationId: string) {
+  return (await loadDatabase()).messages
+    .filter((message) => message.conversationId === conversationId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt)) satisfies CrmMessage[];
 }
 
 export async function getContactById(id: string) {
@@ -332,6 +386,34 @@ export async function createTask(input: unknown) {
     createdAt: new Date().toISOString(),
   });
 
+  await saveDatabase(database);
+}
+
+export async function createMessage(input: unknown) {
+  const data = messageSchema.parse(input);
+  const database = await loadDatabase();
+  const conversation = database.conversations.find(
+    (item) => item.id === data.conversationId,
+  );
+
+  if (!conversation) {
+    return;
+  }
+
+  database.messages.push({
+    id: randomUUID(),
+    conversationId: data.conversationId,
+    direction: "outbound",
+    body: data.body,
+    sentBy: data.sentBy,
+    createdAt: new Date().toISOString(),
+  });
+
+  conversation.lastMessage = data.body;
+  conversation.status = "On track";
+  conversation.nextResponseDueAt = new Date(
+    Date.now() + 1000 * 60 * 60 * 24,
+  ).toISOString();
   await saveDatabase(database);
 }
 

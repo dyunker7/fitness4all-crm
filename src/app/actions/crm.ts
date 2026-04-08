@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   createContact,
+  createMessage,
   createOpportunity,
   createTask,
   updateContact,
@@ -117,4 +118,18 @@ export async function updateTaskStatusAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/contacts");
   revalidatePath("/opportunities");
+}
+
+export async function createMessageAction(formData: FormData) {
+  const conversationId = String(formData.get("conversationId"));
+
+  await createMessage({
+    conversationId,
+    body: formData.get("body"),
+    sentBy: formData.get("sentBy"),
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/inbox");
+  revalidatePath(`/inbox/${conversationId}`);
 }
