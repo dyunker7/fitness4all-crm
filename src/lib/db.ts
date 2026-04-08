@@ -136,6 +136,7 @@ const sql = databaseUrl
   : null;
 
 let postgresReady: Promise<void> | null = null;
+const POSTGRES_TIMEOUT_MS = 2500;
 
 function ensureDirectory(filePath: string) {
   const directory = path.dirname(filePath);
@@ -253,19 +254,31 @@ async function ensurePostgres() {
   await postgresReady;
 }
 
+async function withTimeout<T>(promise: Promise<T>, label: string) {
+  return await Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out`)), POSTGRES_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 async function loadPostgresDatabase(): Promise<CrmDatabase> {
-  await ensurePostgres();
+  await withTimeout(ensurePostgres(), "Postgres init");
 
   if (!sql) {
     return structuredClone(defaultDatabase);
   }
 
-  const [contacts, opportunities, tasks, users] = await Promise.all([
-    sql`SELECT * FROM contacts ORDER BY created_at DESC`,
-    sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
-    sql`SELECT * FROM tasks ORDER BY created_at DESC`,
-    sql`SELECT * FROM users ORDER BY created_at DESC`,
-  ]);
+  const [contacts, opportunities, tasks, users] = await withTimeout(
+    Promise.all([
+      sql`SELECT * FROM contacts ORDER BY created_at DESC`,
+      sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
+      sql`SELECT * FROM tasks ORDER BY created_at DESC`,
+      sql`SELECT * FROM users ORDER BY created_at DESC`,
+    ]),
+    "Postgres query",
+  );
 
   return {
     contacts: contacts.map((row) => ({
@@ -317,69 +330,76 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
 }
 
 async function savePostgresDatabase(data: CrmDatabase) {
-  await ensurePostgres();
+  await withTimeout(ensurePostgres(), "Postgres init");
 
   if (!sql) {
     return;
   }
 
-  await sql.begin(async (tx) => {
-    await tx`DELETE FROM tasks`;
-    await tx`DELETE FROM opportunities`;
-    await tx`DELETE FROM contacts`;
-    await tx`DELETE FROM users`;
+  await withTimeout(
+    sql.begin(async (tx) => {
+      await tx`DELETE FROM tasks`;
+      await tx`DELETE FROM opportunities`;
+      await tx`DELETE FROM contacts`;
+      await tx`DELETE FROM users`;
 
-    for (const user of data.users) {
-      await tx`
-        INSERT INTO users (id, name, email, role, password_hash, created_at)
-        VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.passwordHash}, ${user.createdAt})
-      `;
-    }
+      for (const user of data.users) {
+        await tx`
+          INSERT INTO users (id, name, email, role, password_hash, created_at)
+          VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.passwordHash}, ${user.createdAt})
+        `;
+      }
 
-    for (const contact of data.contacts) {
-      await tx`
-        INSERT INTO contacts (
-          id, first_name, last_name, email, phone, lead_source, membership_interest,
-          training_goal, preferred_location_id, lifecycle_stage, trial_status,
-          waiver_status, consent_status, created_at
-        ) VALUES (
-          ${contact.id}, ${contact.firstName}, ${contact.lastName}, ${contact.email}, ${contact.phone},
-          ${contact.leadSource}, ${contact.membershipInterest}, ${contact.trainingGoal},
-          ${contact.preferredLocationId}, ${contact.lifecycleStage}, ${contact.trialStatus},
-          ${contact.waiverStatus}, ${contact.consentStatus}, ${contact.createdAt}
-        )
-      `;
-    }
+      for (const contact of data.contacts) {
+        await tx`
+          INSERT INTO contacts (
+            id, first_name, last_name, email, phone, lead_source, membership_interest,
+            training_goal, preferred_location_id, lifecycle_stage, trial_status,
+            waiver_status, consent_status, created_at
+          ) VALUES (
+            ${contact.id}, ${contact.firstName}, ${contact.lastName}, ${contact.email}, ${contact.phone},
+            ${contact.leadSource}, ${contact.membershipInterest}, ${contact.trainingGoal},
+            ${contact.preferredLocationId}, ${contact.lifecycleStage}, ${contact.trialStatus},
+            ${contact.waiverStatus}, ${contact.consentStatus}, ${contact.createdAt}
+          )
+        `;
+      }
 
-    for (const opportunity of data.opportunities) {
-      await tx`
-        INSERT INTO opportunities (
-          id, contact_id, pipeline_id, stage_name, owner_name, value,
-          next_action, outcome, created_at
-        ) VALUES (
-          ${opportunity.id}, ${opportunity.contactId}, ${opportunity.pipelineId},
-          ${opportunity.stageName}, ${opportunity.ownerName}, ${opportunity.value},
-          ${opportunity.nextAction}, ${opportunity.outcome}, ${opportunity.createdAt}
-        )
-      `;
-    }
+      for (const opportunity of data.opportunities) {
+        await tx`
+          INSERT INTO opportunities (
+            id, contact_id, pipeline_id, stage_name, owner_name, value,
+            next_action, outcome, created_at
+          ) VALUES (
+            ${opportunity.id}, ${opportunity.contactId}, ${opportunity.pipelineId},
+            ${opportunity.stageName}, ${opportunity.ownerName}, ${opportunity.value},
+            ${opportunity.nextAction}, ${opportunity.outcome}, ${opportunity.createdAt}
+          )
+        `;
+      }
 
-    for (const task of data.tasks) {
-      await tx`
-        INSERT INTO tasks (
-          id, title, status, related_type, related_id, owner_name, due_label, created_at
-        ) VALUES (
-          ${task.id}, ${task.title}, ${task.status}, ${task.relatedType},
-          ${task.relatedId}, ${task.ownerName}, ${task.dueLabel}, ${task.createdAt}
-        )
-      `;
-    }
-  });
+      for (const task of data.tasks) {
+        await tx`
+          INSERT INTO tasks (
+            id, title, status, related_type, related_id, owner_name, due_label, created_at
+          ) VALUES (
+            ${task.id}, ${task.title}, ${task.status}, ${task.relatedType},
+            ${task.relatedId}, ${task.ownerName}, ${task.dueLabel}, ${task.createdAt}
+          )
+        `;
+      }
+    }),
+    "Postgres write",
+  );
 }
 
 export async function loadDatabase() {
   if (sql) {
-    return loadPostgresDatabase();
+    try {
+      return await loadPostgresDatabase();
+    } catch {
+      return loadFileDatabase();
+    }
   }
 
   return loadFileDatabase();
@@ -387,8 +407,13 @@ export async function loadDatabase() {
 
 export async function saveDatabase(data: CrmDatabase) {
   if (sql) {
-    await savePostgresDatabase(data);
-    return;
+    try {
+      await savePostgresDatabase(data);
+      return;
+    } catch {
+      writeFileDatabase(data);
+      return;
+    }
   }
 
   writeFileDatabase(data);
