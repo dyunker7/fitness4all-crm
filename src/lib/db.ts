@@ -116,7 +116,17 @@ const candidatePaths = [
   path.join("/tmp", "fitness4all-crm.json"),
 ];
 
-const databaseUrl = process.env.DATABASE_URL;
+function pickDatabaseUrl() {
+  const candidates = [
+    process.env.POSTGRES_URL_NON_POOLING,
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+  ].filter(Boolean) as string[];
+
+  return candidates.find((value) => !value.startsWith("prisma://")) ?? null;
+}
+
+const databaseUrl = pickDatabaseUrl();
 const sql = databaseUrl
   ? postgres(databaseUrl, {
       ssl: "require",
