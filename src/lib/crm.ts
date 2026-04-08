@@ -96,6 +96,14 @@ const appointmentStatusSchema = z.object({
   status: z.enum(["Scheduled", "Completed", "No Show", "Canceled"]),
 });
 
+const enrollAutomationSchema = z.object({
+  templateId: z.string().trim().min(1),
+  sourceType: z.enum(["contact", "opportunity", "appointment"]),
+  sourceId: z.string().trim().min(1),
+  contactId: z.string().trim().min(1),
+  ownerName: z.string().trim().min(1),
+});
+
 export type CrmContact = {
   id: string;
   firstName: string;
@@ -180,6 +188,56 @@ export type CrmReminder = {
   status: "Pending" | "Sent" | "Skipped";
   createdAt: string;
 };
+
+export type CrmAutomationTemplate = {
+  id: string;
+  name: string;
+  trigger: string;
+  goal: string;
+  actions: string[];
+};
+
+export type CrmAutomationEnrollment = {
+  id: string;
+  templateId: string;
+  templateName: string;
+  sourceType: "contact" | "opportunity" | "appointment";
+  sourceId: string;
+  contactId: string;
+  contactName: string;
+  ownerName: string;
+  status: "Active" | "Completed";
+  createdAt: string;
+};
+
+export type CrmAutomationRun = {
+  id: string;
+  enrollmentId: string;
+  templateId: string;
+  event: string;
+  stepLabel: string;
+  status: "Queued" | "Completed";
+  scheduledFor: string;
+  createdAt: string;
+};
+
+const automationTemplates: CrmAutomationTemplate[] = [
+  ...demoData.workflowTemplates,
+  {
+    id: "wf-tour-reminders",
+    name: "Tour reminders and attendance rescue",
+    trigger: "appointment.booked",
+    goal: "Keep booked tours warm, confirmed, and easy to recover when no-shows happen.",
+    actions: ["send SMS", "send email", "wait", "create task", "move stage"],
+  },
+  {
+    id: "wf-meta-speed-to-lead",
+    name: "Meta lead speed to lead",
+    trigger: "meta.lead.created",
+    goal: "Respond within minutes so Instagram and Facebook lead intent does not cool down.",
+    actions: ["assign owner", "create task", "send SMS", "wait", "send email"],
+  },
+];
 
 function mapContactRow(row: Record<string, string>) {
   return {
@@ -331,6 +389,52 @@ export async function listRemindersForAppointment(appointmentId: string) {
   return (await loadDatabase()).reminders.filter(
     (reminder) => reminder.appointmentId === appointmentId,
   ) satisfies CrmReminder[];
+}
+
+export async function listAutomationEnrollments() {
+  const database = await loadDatabase();
+
+  return database.automationEnrollments
+    .map((enrollment) => {
+      const contact = database.contacts.find((item) => item.id === enrollment.contactId);
+
+      return {
+        ...enrollment,
+        contactName: contact
+          ? `${contact.firstName} ${contact.lastName}`
+          : "Unknown contact",
+      } satisfies CrmAutomationEnrollment;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function listAutomationRuns() {
+  return (await loadDatabase()).automationRuns
+    .slice()
+    .sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)) satisfies CrmAutomationRun[];
+}
+
+export async function listAutomationRunsForEnrollment(enrollmentId: string) {
+  return (await listAutomationRuns()).filter(
+    (run) => run.enrollmentId === enrollmentId,
+  );
+}
+
+export function listAutomationTemplates() {
+  return automationTemplates;
+}
+
+export async function getAutomationSnapshot() {
+  const [enrollments, runs] = await Promise.all([
+    listAutomationEnrollments(),
+    listAutomationRuns(),
+  ]);
+
+  return {
+    activeEnrollments: enrollments.filter((item) => item.status === "Active").length,
+    queuedSteps: runs.filter((item) => item.status === "Queued").length,
+    completedSteps: runs.filter((item) => item.status === "Completed").length,
+  };
 }
 
 export async function getContactById(id: string) {
@@ -498,6 +602,8 @@ export async function ingestMetaLead(input: unknown) {
   const contactId = randomUUID();
   const opportunityId = randomUUID();
   const conversationId = randomUUID();
+  const automationEnrollmentId = randomUUID();
+  const now = new Date();
 
   database.contacts.unshift({
     id: contactId,
@@ -513,7 +619,7 @@ export async function ingestMetaLead(input: unknown) {
     trialStatus: "Not started",
     waiverStatus: "Pending",
     consentStatus: "Pending",
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
 
   database.opportunities.unshift({
@@ -525,7 +631,7 @@ export async function ingestMetaLead(input: unknown) {
     value: 249,
     nextAction: "Respond immediately and offer a tour or intro consult.",
     outcome: "Open",
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
 
   database.conversations.unshift({
@@ -536,7 +642,7 @@ export async function ingestMetaLead(input: unknown) {
     status: "At risk",
     lastMessage: data.message,
     nextResponseDueAt: new Date(Date.now() + 1000 * 60 * 15).toISOString(),
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
 
   database.messages.push({
@@ -545,7 +651,7 @@ export async function ingestMetaLead(input: unknown) {
     direction: "inbound",
     body: data.message,
     sentBy: `${data.firstName} ${data.lastName}`,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
 
   database.tasks.unshift({
@@ -556,8 +662,53 @@ export async function ingestMetaLead(input: unknown) {
     relatedId: contactId,
     ownerName: data.ownerName,
     dueLabel: "Within 15 min",
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
+
+  database.automationEnrollments.unshift({
+    id: automationEnrollmentId,
+    templateId: "wf-meta-speed-to-lead",
+    templateName: "Meta lead speed to lead",
+    sourceType: "contact",
+    sourceId: contactId,
+    contactId,
+    ownerName: data.ownerName,
+    status: "Active",
+    createdAt: now.toISOString(),
+  });
+
+  database.automationRuns.push(
+    {
+      id: randomUUID(),
+      enrollmentId: automationEnrollmentId,
+      templateId: "wf-meta-speed-to-lead",
+      event: "meta.lead.created",
+      stepLabel: "Assign owner",
+      status: "Completed",
+      scheduledFor: now.toISOString(),
+      createdAt: now.toISOString(),
+    },
+    {
+      id: randomUUID(),
+      enrollmentId: automationEnrollmentId,
+      templateId: "wf-meta-speed-to-lead",
+      event: "meta.lead.created",
+      stepLabel: "Reply on social and invite to book",
+      status: "Queued",
+      scheduledFor: new Date(now.getTime() + 1000 * 60 * 5).toISOString(),
+      createdAt: now.toISOString(),
+    },
+    {
+      id: randomUUID(),
+      enrollmentId: automationEnrollmentId,
+      templateId: "wf-meta-speed-to-lead",
+      event: "meta.lead.created",
+      stepLabel: "Create fallback call task",
+      status: "Queued",
+      scheduledFor: new Date(now.getTime() + 1000 * 60 * 20).toISOString(),
+      createdAt: now.toISOString(),
+    },
+  );
 
   await saveDatabase(database);
 
@@ -572,6 +723,8 @@ export async function createAppointment(input: unknown) {
   const data = appointmentSchema.parse(input);
   const database = await loadDatabase();
   const appointmentId = randomUUID();
+  const automationEnrollmentId = randomUUID();
+  const now = new Date();
 
   database.appointments.push({
     id: appointmentId,
@@ -583,7 +736,7 @@ export async function createAppointment(input: unknown) {
     locationName: data.locationName,
     appointmentType: data.appointmentType,
     status: "Scheduled",
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   });
 
   database.reminders.push(
@@ -593,7 +746,7 @@ export async function createAppointment(input: unknown) {
       channel: "SMS",
       offsetMinutes: -1440,
       status: "Pending",
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
     },
     {
       id: randomUUID(),
@@ -601,7 +754,42 @@ export async function createAppointment(input: unknown) {
       channel: "SMS",
       offsetMinutes: -30,
       status: "Pending",
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
+    },
+  );
+
+  database.automationEnrollments.unshift({
+    id: automationEnrollmentId,
+    templateId: "wf-tour-reminders",
+    templateName: "Tour reminders and attendance rescue",
+    sourceType: "appointment",
+    sourceId: appointmentId,
+    contactId: data.contactId,
+    ownerName: data.ownerName,
+    status: "Active",
+    createdAt: now.toISOString(),
+  });
+
+  database.automationRuns.push(
+    {
+      id: randomUUID(),
+      enrollmentId: automationEnrollmentId,
+      templateId: "wf-tour-reminders",
+      event: "appointment.booked",
+      stepLabel: "Schedule day-before SMS",
+      status: "Queued",
+      scheduledFor: now.toISOString(),
+      createdAt: now.toISOString(),
+    },
+    {
+      id: randomUUID(),
+      enrollmentId: automationEnrollmentId,
+      templateId: "wf-tour-reminders",
+      event: "appointment.booked",
+      stepLabel: "Queue 30-minute reminder",
+      status: "Queued",
+      scheduledFor: now.toISOString(),
+      createdAt: now.toISOString(),
     },
   );
 
@@ -618,6 +806,55 @@ export async function updateAppointmentStatus(input: unknown) {
   }
 
   appointment.status = data.status;
+
+  if (data.status !== "Scheduled") {
+    for (const enrollment of database.automationEnrollments) {
+      if (enrollment.sourceType === "appointment" && enrollment.sourceId === appointment.id) {
+        enrollment.status = "Completed";
+      }
+    }
+  }
+
+  await saveDatabase(database);
+}
+
+export async function enrollAutomation(input: unknown) {
+  const data = enrollAutomationSchema.parse(input);
+  const database = await loadDatabase();
+  const template = automationTemplates.find((item) => item.id === data.templateId);
+
+  if (!template) {
+    return;
+  }
+
+  const enrollmentId = randomUUID();
+  const now = new Date();
+
+  database.automationEnrollments.unshift({
+    id: enrollmentId,
+    templateId: template.id,
+    templateName: template.name,
+    sourceType: data.sourceType,
+    sourceId: data.sourceId,
+    contactId: data.contactId,
+    ownerName: data.ownerName,
+    status: "Active",
+    createdAt: now.toISOString(),
+  });
+
+  database.automationRuns.push(
+    ...template.actions.slice(0, 3).map((action, index) => ({
+      id: randomUUID(),
+      enrollmentId,
+      templateId: template.id,
+      event: template.trigger,
+      stepLabel: action,
+      status: index === 0 ? ("Completed" as const) : ("Queued" as const),
+      scheduledFor: new Date(now.getTime() + index * 1000 * 60 * 15).toISOString(),
+      createdAt: now.toISOString(),
+    })),
+  );
+
   await saveDatabase(database);
 }
 

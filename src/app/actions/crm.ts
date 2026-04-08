@@ -8,6 +8,7 @@ import {
   createMessage,
   createOpportunity,
   createTask,
+  enrollAutomation,
   ingestMetaLead,
   updateAppointmentStatus,
   updateContact,
@@ -150,6 +151,7 @@ export async function createAppointmentAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/schedule");
+  revalidatePath("/automations");
 }
 
 export async function updateAppointmentStatusAction(formData: FormData) {
@@ -160,6 +162,7 @@ export async function updateAppointmentStatusAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/schedule");
+  revalidatePath("/automations");
 }
 
 export async function ingestMetaLeadAction(formData: FormData) {
@@ -181,4 +184,21 @@ export async function ingestMetaLeadAction(formData: FormData) {
   revalidatePath("/contacts");
   revalidatePath("/opportunities");
   revalidatePath("/inbox");
+  revalidatePath("/automations");
+}
+
+export async function enrollAutomationAction(formData: FormData) {
+  await enrollAutomation({
+    templateId: formData.get("templateId"),
+    sourceType: formData.get("sourceType"),
+    sourceId: formData.get("sourceId"),
+    contactId: formData.get("contactId"),
+    ownerName: formData.get("ownerName"),
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/contacts");
+  revalidatePath("/opportunities");
+  revalidatePath("/schedule");
+  revalidatePath("/automations");
 }

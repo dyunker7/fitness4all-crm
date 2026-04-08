@@ -97,6 +97,29 @@ export type ReminderRecord = {
   createdAt: string;
 };
 
+export type AutomationEnrollmentRecord = {
+  id: string;
+  templateId: string;
+  templateName: string;
+  sourceType: "contact" | "opportunity" | "appointment";
+  sourceId: string;
+  contactId: string;
+  ownerName: string;
+  status: "Active" | "Completed";
+  createdAt: string;
+};
+
+export type AutomationRunRecord = {
+  id: string;
+  enrollmentId: string;
+  templateId: string;
+  event: string;
+  stepLabel: string;
+  status: "Queued" | "Completed";
+  scheduledFor: string;
+  createdAt: string;
+};
+
 export type CrmDatabase = {
   contacts: ContactRecord[];
   opportunities: OpportunityRecord[];
@@ -106,6 +129,8 @@ export type CrmDatabase = {
   messages: MessageRecord[];
   appointments: AppointmentRecord[];
   reminders: ReminderRecord[];
+  automationEnrollments: AutomationEnrollmentRecord[];
+  automationRuns: AutomationRunRecord[];
 };
 
 const seededPasswordHash = hashSync("fitness4all123", 10);
@@ -224,6 +249,62 @@ const defaultDatabase: CrmDatabase = {
       channel: "Email",
       offsetMinutes: -180,
       status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+  ],
+  automationEnrollments: [
+    {
+      id: "auto-enrollment-1",
+      templateId: "wf-new-lead",
+      templateName: "New lead nurture",
+      sourceType: "contact",
+      sourceId: demoData.contacts[0].id,
+      contactId: demoData.contacts[0].id,
+      ownerName: "Avery Cole",
+      status: "Active",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "auto-enrollment-2",
+      templateId: "wf-trial-convert",
+      templateName: "Trial to membership conversion",
+      sourceType: "appointment",
+      sourceId: "appt-2",
+      contactId: demoData.contacts[1].id,
+      ownerName: "Lena Patel",
+      status: "Active",
+      createdAt: new Date().toISOString(),
+    },
+  ],
+  automationRuns: [
+    {
+      id: "auto-run-1",
+      enrollmentId: "auto-enrollment-1",
+      templateId: "wf-new-lead",
+      event: "meta.lead.created",
+      stepLabel: "Assign owner",
+      status: "Completed",
+      scheduledFor: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "auto-run-2",
+      enrollmentId: "auto-enrollment-1",
+      templateId: "wf-new-lead",
+      event: "meta.lead.created",
+      stepLabel: "Send welcome SMS",
+      status: "Queued",
+      scheduledFor: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "auto-run-3",
+      enrollmentId: "auto-enrollment-2",
+      templateId: "wf-trial-convert",
+      event: "appointment.booked",
+      stepLabel: "Send trial prep email",
+      status: "Queued",
+      scheduledFor: new Date(Date.now() + 1000 * 60 * 10).toISOString(),
       createdAt: new Date().toISOString(),
     },
   ],
@@ -412,6 +493,33 @@ async function ensurePostgres() {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS automation_enrollments (
+          id TEXT PRIMARY KEY,
+          template_id TEXT NOT NULL,
+          template_name TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          contact_id TEXT NOT NULL,
+          owner_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS automation_runs (
+          id TEXT PRIMARY KEY,
+          enrollment_id TEXT NOT NULL,
+          template_id TEXT NOT NULL,
+          event TEXT NOT NULL,
+          step_label TEXT NOT NULL,
+          status TEXT NOT NULL,
+          scheduled_for TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
       const existingUsers = await sql`SELECT COUNT(*)::int AS count FROM users`;
       if (existingUsers[0].count === 0) {
         await savePostgresDatabase(defaultDatabase);
@@ -438,7 +546,7 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
     return structuredClone(defaultDatabase);
   }
 
-  const [contacts, opportunities, tasks, users, conversations, messages, appointments, reminders] = await withTimeout(
+  const [contacts, opportunities, tasks, users, conversations, messages, appointments, reminders, automationEnrollments, automationRuns] = await withTimeout(
     Promise.all([
       sql`SELECT * FROM contacts ORDER BY created_at DESC`,
       sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
@@ -448,6 +556,8 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       sql`SELECT * FROM messages ORDER BY created_at ASC`,
       sql`SELECT * FROM appointments ORDER BY starts_at ASC`,
       sql`SELECT * FROM reminders ORDER BY created_at ASC`,
+      sql`SELECT * FROM automation_enrollments ORDER BY created_at DESC`,
+      sql`SELECT * FROM automation_runs ORDER BY scheduled_for ASC`,
     ]),
     "Postgres query",
   );
@@ -536,6 +646,27 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       status: row.status,
       createdAt: row.created_at,
     })),
+    automationEnrollments: automationEnrollments.map((row) => ({
+      id: row.id,
+      templateId: row.template_id,
+      templateName: row.template_name,
+      sourceType: row.source_type,
+      sourceId: row.source_id,
+      contactId: row.contact_id,
+      ownerName: row.owner_name,
+      status: row.status,
+      createdAt: row.created_at,
+    })),
+    automationRuns: automationRuns.map((row) => ({
+      id: row.id,
+      enrollmentId: row.enrollment_id,
+      templateId: row.template_id,
+      event: row.event,
+      stepLabel: row.step_label,
+      status: row.status,
+      scheduledFor: row.scheduled_for,
+      createdAt: row.created_at,
+    })),
   };
 }
 
@@ -553,6 +684,8 @@ async function savePostgresDatabase(data: CrmDatabase) {
       await tx`DELETE FROM conversations`;
       await tx`DELETE FROM reminders`;
       await tx`DELETE FROM appointments`;
+      await tx`DELETE FROM automation_runs`;
+      await tx`DELETE FROM automation_enrollments`;
       await tx`DELETE FROM opportunities`;
       await tx`DELETE FROM contacts`;
       await tx`DELETE FROM users`;
@@ -645,6 +778,29 @@ async function savePostgresDatabase(data: CrmDatabase) {
           ) VALUES (
             ${reminder.id}, ${reminder.appointmentId}, ${reminder.channel},
             ${reminder.offsetMinutes}, ${reminder.status}, ${reminder.createdAt}
+          )
+        `;
+      }
+
+      for (const enrollment of data.automationEnrollments) {
+        await tx`
+          INSERT INTO automation_enrollments (
+            id, template_id, template_name, source_type, source_id, contact_id, owner_name, status, created_at
+          ) VALUES (
+            ${enrollment.id}, ${enrollment.templateId}, ${enrollment.templateName},
+            ${enrollment.sourceType}, ${enrollment.sourceId}, ${enrollment.contactId},
+            ${enrollment.ownerName}, ${enrollment.status}, ${enrollment.createdAt}
+          )
+        `;
+      }
+
+      for (const run of data.automationRuns) {
+        await tx`
+          INSERT INTO automation_runs (
+            id, enrollment_id, template_id, event, step_label, status, scheduled_for, created_at
+          ) VALUES (
+            ${run.id}, ${run.enrollmentId}, ${run.templateId}, ${run.event},
+            ${run.stepLabel}, ${run.status}, ${run.scheduledFor}, ${run.createdAt}
           )
         `;
       }
