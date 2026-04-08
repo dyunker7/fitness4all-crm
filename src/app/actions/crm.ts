@@ -8,6 +8,7 @@ import {
   createMessage,
   createOpportunity,
   createTask,
+  executeQueuedAutomationRuns,
   enrollAutomation,
   ingestMetaLead,
   updateAppointmentStatus,
@@ -199,6 +200,17 @@ export async function enrollAutomationAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/contacts");
   revalidatePath("/opportunities");
+  revalidatePath("/schedule");
+  revalidatePath("/automations");
+}
+
+export async function executeQueuedAutomationRunsAction() {
+  await executeQueuedAutomationRuns();
+
+  revalidatePath("/dashboard");
+  revalidatePath("/contacts");
+  revalidatePath("/opportunities");
+  revalidatePath("/inbox");
   revalidatePath("/schedule");
   revalidatePath("/automations");
 }

@@ -1,6 +1,9 @@
 import { format } from "date-fns";
 
-import { enrollAutomationAction } from "@/app/actions/crm";
+import {
+  enrollAutomationAction,
+  executeQueuedAutomationRunsAction,
+} from "@/app/actions/crm";
 import { Surface, StatCard } from "@/components/crm-cards";
 import { CrmShell } from "@/components/crm-shell";
 import {
@@ -28,6 +31,21 @@ export default async function AutomationsPage() {
       title="Automations"
       subtitle="Track live workflow enrollments, see queued follow-up steps, and launch repeatable gym sales automations for new leads and booked appointments."
     >
+      <Surface className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Execution controls</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+            Run queued workflow steps to turn automation runs into real inbox messages
+            and follow-up tasks across the CRM.
+          </p>
+        </div>
+        <form action={executeQueuedAutomationRunsAction}>
+          <button type="submit" className="crm-button">
+            Run queued steps now
+          </button>
+        </form>
+      </Surface>
+
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
           label="Active enrollments"

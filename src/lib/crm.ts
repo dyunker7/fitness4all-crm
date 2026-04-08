@@ -858,6 +858,140 @@ export async function enrollAutomation(input: unknown) {
   await saveDatabase(database);
 }
 
+function buildAutomationMessage(stepLabel: string, contactName: string) {
+  const firstName = contactName.split(" ")[0] ?? "there";
+  const lowered = stepLabel.toLowerCase();
+
+  if (lowered.includes("social")) {
+    return `Hi ${firstName}, thanks for reaching out to Fitness4All. We’d love to help you get started. Want me to help you book a tour this week?`;
+  }
+
+  if (lowered.includes("sms") || lowered.includes("text")) {
+    return `Hi ${firstName}, this is Fitness4All checking in. We’re holding space for your next step and can help you book or confirm anytime.`;
+  }
+
+  if (lowered.includes("email")) {
+    return `Hi ${firstName}, we’ve got everything ready on our side. Reply here and we’ll line up the best next visit or consultation for you.`;
+  }
+
+  return `Hi ${firstName}, Fitness4All is following up on your request. Let us know what time works best for your next step.`;
+}
+
+function needsOutboundMessage(stepLabel: string) {
+  const lowered = stepLabel.toLowerCase();
+  return (
+    lowered.includes("send") ||
+    lowered.includes("reply") ||
+    lowered.includes("email") ||
+    lowered.includes("sms") ||
+    lowered.includes("message")
+  );
+}
+
+function markEnrollmentCompleteIfDone(
+  database: Awaited<ReturnType<typeof loadDatabase>>,
+  enrollmentId: string,
+) {
+  const enrollment = database.automationEnrollments.find(
+    (item) => item.id === enrollmentId,
+  );
+
+  if (!enrollment) {
+    return;
+  }
+
+  const hasQueuedRuns = database.automationRuns.some(
+    (run) => run.enrollmentId === enrollmentId && run.status === "Queued",
+  );
+
+  enrollment.status = hasQueuedRuns ? "Active" : "Completed";
+}
+
+export async function executeQueuedAutomationRuns() {
+  const database = await loadDatabase();
+  const queuedRuns = database.automationRuns.filter((run) => run.status === "Queued");
+  const now = new Date().toISOString();
+  let processedCount = 0;
+
+  for (const run of queuedRuns) {
+    const enrollment = database.automationEnrollments.find(
+      (item) => item.id === run.enrollmentId,
+    );
+
+    if (!enrollment) {
+      continue;
+    }
+
+    const contact = database.contacts.find((item) => item.id === enrollment.contactId);
+
+    if (!contact) {
+      continue;
+    }
+
+    const contactName = `${contact.firstName} ${contact.lastName}`;
+
+    if (needsOutboundMessage(run.stepLabel)) {
+      let conversation = database.conversations.find(
+        (item) => item.contactId === enrollment.contactId,
+      );
+
+      if (!conversation) {
+        conversation = {
+          id: randomUUID(),
+          contactId: enrollment.contactId,
+          channel: "SMS",
+          ownerName: enrollment.ownerName,
+          status: "On track",
+          lastMessage: "",
+          nextResponseDueAt: now,
+          createdAt: now,
+        };
+        database.conversations.unshift(conversation);
+      }
+
+      const body = buildAutomationMessage(run.stepLabel, contactName);
+
+      database.messages.push({
+        id: randomUUID(),
+        conversationId: conversation.id,
+        direction: "outbound",
+        body,
+        sentBy: enrollment.ownerName,
+        createdAt: now,
+      });
+
+      conversation.lastMessage = body;
+      conversation.status = "On track";
+      conversation.ownerName = enrollment.ownerName;
+      conversation.nextResponseDueAt = new Date(
+        Date.now() + 1000 * 60 * 60 * 12,
+      ).toISOString();
+    } else {
+      database.tasks.unshift({
+        id: randomUUID(),
+        title: `${run.stepLabel} for ${contact.firstName}`,
+        status: "Open",
+        relatedType: "contact",
+        relatedId: enrollment.contactId,
+        ownerName: enrollment.ownerName,
+        dueLabel: "Today",
+        createdAt: now,
+      });
+    }
+
+    run.status = "Completed";
+    run.scheduledFor = now;
+    processedCount += 1;
+    markEnrollmentCompleteIfDone(database, enrollment.id);
+  }
+
+  await saveDatabase(database);
+
+  return {
+    processedCount,
+  };
+}
+
 export async function updateTaskStatus(input: unknown) {
   const data = taskStatusSchema.parse(input);
   const database = await loadDatabase();
