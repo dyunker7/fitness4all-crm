@@ -15,6 +15,34 @@ type SessionUser = {
   role: string;
 };
 
+const seededUsers: Array<
+  SessionUser & {
+    password: string;
+  }
+> = [
+  {
+    id: "user-admin",
+    name: "Dave Yunker",
+    email: "admin@fitness4allcrm.com",
+    role: "Admin",
+    password: "fitness4all123",
+  },
+  {
+    id: "user-manager",
+    name: "Avery Cole",
+    email: "manager@fitness4allcrm.com",
+    role: "Sales Manager",
+    password: "fitness4all123",
+  },
+  {
+    id: "user-rep",
+    name: "Lena Patel",
+    email: "rep@fitness4allcrm.com",
+    role: "Sales Rep / Front Desk",
+    password: "fitness4all123",
+  },
+];
+
 function getSecret() {
   return new TextEncoder().encode(
     process.env.AUTH_SECRET ?? "fitness4all-local-dev-secret-change-me",
@@ -22,6 +50,21 @@ function getSecret() {
 }
 
 export async function authenticateUser(email: string, password: string) {
+  const seededUser = seededUsers.find(
+    (item) =>
+      item.email.toLowerCase() === email.toLowerCase() &&
+      item.password === password,
+  );
+
+  if (seededUser) {
+    return {
+      id: seededUser.id,
+      name: seededUser.name,
+      email: seededUser.email,
+      role: seededUser.role,
+    } satisfies SessionUser;
+  }
+
   const database = await loadDatabase();
   const user = database.users.find(
     (item) => item.email.toLowerCase() === email.toLowerCase(),
