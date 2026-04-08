@@ -75,6 +75,28 @@ export type MessageRecord = {
   createdAt: string;
 };
 
+export type AppointmentRecord = {
+  id: string;
+  contactId: string;
+  opportunityId: string | null;
+  title: string;
+  ownerName: string;
+  startsAt: string;
+  locationName: string;
+  appointmentType: string;
+  status: "Scheduled" | "Completed" | "No Show" | "Canceled";
+  createdAt: string;
+};
+
+export type ReminderRecord = {
+  id: string;
+  appointmentId: string;
+  channel: "SMS" | "Email" | "Phone" | "Instagram" | "Facebook" | "WhatsApp" | "Website";
+  offsetMinutes: number;
+  status: "Pending" | "Sent" | "Skipped";
+  createdAt: string;
+};
+
 export type CrmDatabase = {
   contacts: ContactRecord[];
   opportunities: OpportunityRecord[];
@@ -82,6 +104,8 @@ export type CrmDatabase = {
   users: UserRecord[];
   conversations: ConversationRecord[];
   messages: MessageRecord[];
+  appointments: AppointmentRecord[];
+  reminders: ReminderRecord[];
 };
 
 const seededPasswordHash = hashSync("fitness4all123", 10);
@@ -151,6 +175,58 @@ const defaultDatabase: CrmDatabase = {
       : "Lead",
     createdAt: new Date().toISOString(),
   })),
+  appointments: [
+    {
+      id: "appt-1",
+      contactId: demoData.contacts[0].id,
+      opportunityId: demoData.opportunities[0].id,
+      title: "Saturday intro tour",
+      ownerName: "Avery Cole",
+      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+      locationName: "Midtown Club",
+      appointmentType: "Tour",
+      status: "Scheduled",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "appt-2",
+      contactId: demoData.contacts[1].id,
+      opportunityId: demoData.opportunities[1].id,
+      title: "Trial follow-up consult",
+      ownerName: "Lena Patel",
+      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 30).toISOString(),
+      locationName: "Midtown Club",
+      appointmentType: "Consult",
+      status: "Scheduled",
+      createdAt: new Date().toISOString(),
+    },
+  ],
+  reminders: [
+    {
+      id: "rem-1",
+      appointmentId: "appt-1",
+      channel: "SMS",
+      offsetMinutes: -1440,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "rem-2",
+      appointmentId: "appt-1",
+      channel: "SMS",
+      offsetMinutes: -30,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "rem-3",
+      appointmentId: "appt-2",
+      channel: "Email",
+      offsetMinutes: -180,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+  ],
 };
 
 const candidatePaths = [
@@ -310,6 +386,32 @@ async function ensurePostgres() {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS appointments (
+          id TEXT PRIMARY KEY,
+          contact_id TEXT NOT NULL,
+          opportunity_id TEXT,
+          title TEXT NOT NULL,
+          owner_name TEXT NOT NULL,
+          starts_at TEXT NOT NULL,
+          location_name TEXT NOT NULL,
+          appointment_type TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS reminders (
+          id TEXT PRIMARY KEY,
+          appointment_id TEXT NOT NULL,
+          channel TEXT NOT NULL,
+          offset_minutes INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `;
+
       const existingUsers = await sql`SELECT COUNT(*)::int AS count FROM users`;
       if (existingUsers[0].count === 0) {
         await savePostgresDatabase(defaultDatabase);
@@ -336,7 +438,7 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
     return structuredClone(defaultDatabase);
   }
 
-  const [contacts, opportunities, tasks, users, conversations, messages] = await withTimeout(
+  const [contacts, opportunities, tasks, users, conversations, messages, appointments, reminders] = await withTimeout(
     Promise.all([
       sql`SELECT * FROM contacts ORDER BY created_at DESC`,
       sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
@@ -344,6 +446,8 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       sql`SELECT * FROM users ORDER BY created_at DESC`,
       sql`SELECT * FROM conversations ORDER BY created_at DESC`,
       sql`SELECT * FROM messages ORDER BY created_at ASC`,
+      sql`SELECT * FROM appointments ORDER BY starts_at ASC`,
+      sql`SELECT * FROM reminders ORDER BY created_at ASC`,
     ]),
     "Postgres query",
   );
@@ -412,6 +516,26 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       sentBy: row.sent_by,
       createdAt: row.created_at,
     })),
+    appointments: appointments.map((row) => ({
+      id: row.id,
+      contactId: row.contact_id,
+      opportunityId: row.opportunity_id,
+      title: row.title,
+      ownerName: row.owner_name,
+      startsAt: row.starts_at,
+      locationName: row.location_name,
+      appointmentType: row.appointment_type,
+      status: row.status,
+      createdAt: row.created_at,
+    })),
+    reminders: reminders.map((row) => ({
+      id: row.id,
+      appointmentId: row.appointment_id,
+      channel: row.channel,
+      offsetMinutes: Number(row.offset_minutes),
+      status: row.status,
+      createdAt: row.created_at,
+    })),
   };
 }
 
@@ -427,6 +551,8 @@ async function savePostgresDatabase(data: CrmDatabase) {
       await tx`DELETE FROM tasks`;
       await tx`DELETE FROM messages`;
       await tx`DELETE FROM conversations`;
+      await tx`DELETE FROM reminders`;
+      await tx`DELETE FROM appointments`;
       await tx`DELETE FROM opportunities`;
       await tx`DELETE FROM contacts`;
       await tx`DELETE FROM users`;
@@ -496,6 +622,29 @@ async function savePostgresDatabase(data: CrmDatabase) {
           ) VALUES (
             ${message.id}, ${message.conversationId}, ${message.direction},
             ${message.body}, ${message.sentBy}, ${message.createdAt}
+          )
+        `;
+      }
+
+      for (const appointment of data.appointments) {
+        await tx`
+          INSERT INTO appointments (
+            id, contact_id, opportunity_id, title, owner_name, starts_at, location_name, appointment_type, status, created_at
+          ) VALUES (
+            ${appointment.id}, ${appointment.contactId}, ${appointment.opportunityId}, ${appointment.title},
+            ${appointment.ownerName}, ${appointment.startsAt}, ${appointment.locationName},
+            ${appointment.appointmentType}, ${appointment.status}, ${appointment.createdAt}
+          )
+        `;
+      }
+
+      for (const reminder of data.reminders) {
+        await tx`
+          INSERT INTO reminders (
+            id, appointment_id, channel, offset_minutes, status, created_at
+          ) VALUES (
+            ${reminder.id}, ${reminder.appointmentId}, ${reminder.channel},
+            ${reminder.offsetMinutes}, ${reminder.status}, ${reminder.createdAt}
           )
         `;
       }

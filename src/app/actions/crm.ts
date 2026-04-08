@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  createAppointment,
   createContact,
   createMessage,
   createOpportunity,
   createTask,
+  updateAppointmentStatus,
   updateContact,
   updateOpportunity,
   updateOpportunityStage,
@@ -132,4 +134,29 @@ export async function createMessageAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/inbox");
   revalidatePath(`/inbox/${conversationId}`);
+}
+
+export async function createAppointmentAction(formData: FormData) {
+  await createAppointment({
+    contactId: formData.get("contactId"),
+    opportunityId: formData.get("opportunityId"),
+    title: formData.get("title"),
+    ownerName: formData.get("ownerName"),
+    startsAt: formData.get("startsAt"),
+    locationName: formData.get("locationName"),
+    appointmentType: formData.get("appointmentType"),
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/schedule");
+}
+
+export async function updateAppointmentStatusAction(formData: FormData) {
+  await updateAppointmentStatus({
+    id: formData.get("id"),
+    status: formData.get("status"),
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/schedule");
 }

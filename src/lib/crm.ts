@@ -67,6 +67,21 @@ const messageSchema = z.object({
   sentBy: z.string().trim().min(1),
 });
 
+const appointmentSchema = z.object({
+  contactId: z.string().trim().min(1),
+  opportunityId: z.string().trim().optional().nullable(),
+  title: z.string().trim().min(1),
+  ownerName: z.string().trim().min(1),
+  startsAt: z.string().trim().min(1),
+  locationName: z.string().trim().min(1),
+  appointmentType: z.string().trim().min(1),
+});
+
+const appointmentStatusSchema = z.object({
+  id: z.string().trim().min(1),
+  status: z.enum(["Scheduled", "Completed", "No Show", "Canceled"]),
+});
+
 export type CrmContact = {
   id: string;
   firstName: string;
@@ -126,6 +141,29 @@ export type CrmMessage = {
   direction: "inbound" | "outbound";
   body: string;
   sentBy: string;
+  createdAt: string;
+};
+
+export type CrmAppointment = {
+  id: string;
+  contactId: string;
+  contactName: string;
+  opportunityId: string | null;
+  title: string;
+  ownerName: string;
+  startsAt: string;
+  locationName: string;
+  appointmentType: string;
+  status: "Scheduled" | "Completed" | "No Show" | "Canceled";
+  createdAt: string;
+};
+
+export type CrmReminder = {
+  id: string;
+  appointmentId: string;
+  channel: string;
+  offsetMinutes: number;
+  status: "Pending" | "Sent" | "Skipped";
   createdAt: string;
 };
 
@@ -256,6 +294,29 @@ export async function listMessagesForConversation(conversationId: string) {
   return (await loadDatabase()).messages
     .filter((message) => message.conversationId === conversationId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt)) satisfies CrmMessage[];
+}
+
+export async function listAppointments() {
+  const database = await loadDatabase();
+
+  return database.appointments
+    .map((appointment) => {
+      const contact = database.contacts.find((item) => item.id === appointment.contactId);
+
+      return {
+        ...appointment,
+        contactName: contact
+          ? `${contact.firstName} ${contact.lastName}`
+          : "Unknown contact",
+      } satisfies CrmAppointment;
+    })
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+export async function listRemindersForAppointment(appointmentId: string) {
+  return (await loadDatabase()).reminders.filter(
+    (reminder) => reminder.appointmentId === appointmentId,
+  ) satisfies CrmReminder[];
 }
 
 export async function getContactById(id: string) {
@@ -414,6 +475,59 @@ export async function createMessage(input: unknown) {
   conversation.nextResponseDueAt = new Date(
     Date.now() + 1000 * 60 * 60 * 24,
   ).toISOString();
+  await saveDatabase(database);
+}
+
+export async function createAppointment(input: unknown) {
+  const data = appointmentSchema.parse(input);
+  const database = await loadDatabase();
+  const appointmentId = randomUUID();
+
+  database.appointments.push({
+    id: appointmentId,
+    contactId: data.contactId,
+    opportunityId: data.opportunityId ?? null,
+    title: data.title,
+    ownerName: data.ownerName,
+    startsAt: data.startsAt,
+    locationName: data.locationName,
+    appointmentType: data.appointmentType,
+    status: "Scheduled",
+    createdAt: new Date().toISOString(),
+  });
+
+  database.reminders.push(
+    {
+      id: randomUUID(),
+      appointmentId,
+      channel: "SMS",
+      offsetMinutes: -1440,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: randomUUID(),
+      appointmentId,
+      channel: "SMS",
+      offsetMinutes: -30,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    },
+  );
+
+  await saveDatabase(database);
+}
+
+export async function updateAppointmentStatus(input: unknown) {
+  const data = appointmentStatusSchema.parse(input);
+  const database = await loadDatabase();
+  const appointment = database.appointments.find((item) => item.id === data.id);
+
+  if (!appointment) {
+    return;
+  }
+
+  appointment.status = data.status;
   await saveDatabase(database);
 }
 
