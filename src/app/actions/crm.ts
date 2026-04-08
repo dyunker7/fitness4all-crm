@@ -8,6 +8,7 @@ import {
   createMessage,
   createOpportunity,
   createTask,
+  ingestMetaLead,
   updateAppointmentStatus,
   updateContact,
   updateOpportunity,
@@ -159,4 +160,25 @@ export async function updateAppointmentStatusAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/schedule");
+}
+
+export async function ingestMetaLeadAction(formData: FormData) {
+  await ingestMetaLead({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    leadSource: formData.get("leadSource"),
+    membershipInterest: formData.get("membershipInterest"),
+    trainingGoal: formData.get("trainingGoal"),
+    preferredLocationId: formData.get("preferredLocationId"),
+    ownerName: formData.get("ownerName"),
+    message: formData.get("message"),
+    channel: formData.get("channel"),
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/contacts");
+  revalidatePath("/opportunities");
+  revalidatePath("/inbox");
 }

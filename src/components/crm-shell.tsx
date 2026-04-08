@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   MessageCircleMore,
   CalendarClock,
+  BadgePlus,
 } from "lucide-react";
 
 import { logoutAction } from "@/app/actions/auth";
@@ -16,6 +17,7 @@ const navItems = [
   { href: "/opportunities", label: "Opportunities", icon: BriefcaseBusiness },
   { href: "/inbox", label: "Inbox", icon: MessageCircleMore },
   { href: "/schedule", label: "Schedule", icon: CalendarClock },
+  { href: "/meta", label: "Meta Leads", icon: BadgePlus },
 ];
 
 export async function CrmShell({

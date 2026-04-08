@@ -67,6 +67,20 @@ const messageSchema = z.object({
   sentBy: z.string().trim().min(1),
 });
 
+const metaLeadSchema = z.object({
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  email: z.email(),
+  phone: z.string().trim().min(7),
+  leadSource: z.string().trim().min(1),
+  membershipInterest: z.string().trim().min(1),
+  trainingGoal: z.string().trim().min(1),
+  preferredLocationId: z.string().trim().min(1),
+  ownerName: z.string().trim().min(1),
+  message: z.string().trim().min(1),
+  channel: z.enum(["Instagram", "Facebook"]),
+});
+
 const appointmentSchema = z.object({
   contactId: z.string().trim().min(1),
   opportunityId: z.string().trim().optional().nullable(),
@@ -476,6 +490,82 @@ export async function createMessage(input: unknown) {
     Date.now() + 1000 * 60 * 60 * 24,
   ).toISOString();
   await saveDatabase(database);
+}
+
+export async function ingestMetaLead(input: unknown) {
+  const data = metaLeadSchema.parse(input);
+  const database = await loadDatabase();
+  const contactId = randomUUID();
+  const opportunityId = randomUUID();
+  const conversationId = randomUUID();
+
+  database.contacts.unshift({
+    id: contactId,
+    firstName: data.firstName,
+    lastName: data.lastName,
+    email: data.email,
+    phone: data.phone,
+    leadSource: data.leadSource,
+    membershipInterest: data.membershipInterest,
+    trainingGoal: data.trainingGoal,
+    preferredLocationId: data.preferredLocationId,
+    lifecycleStage: "New lead",
+    trialStatus: "Not started",
+    waiverStatus: "Pending",
+    consentStatus: "Pending",
+    createdAt: new Date().toISOString(),
+  });
+
+  database.opportunities.unshift({
+    id: opportunityId,
+    contactId,
+    pipelineId: "pipeline-sales",
+    stageName: "New lead",
+    ownerName: data.ownerName,
+    value: 249,
+    nextAction: "Respond immediately and offer a tour or intro consult.",
+    outcome: "Open",
+    createdAt: new Date().toISOString(),
+  });
+
+  database.conversations.unshift({
+    id: conversationId,
+    contactId,
+    channel: data.channel,
+    ownerName: data.ownerName,
+    status: "At risk",
+    lastMessage: data.message,
+    nextResponseDueAt: new Date(Date.now() + 1000 * 60 * 15).toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+
+  database.messages.push({
+    id: randomUUID(),
+    conversationId,
+    direction: "inbound",
+    body: data.message,
+    sentBy: `${data.firstName} ${data.lastName}`,
+    createdAt: new Date().toISOString(),
+  });
+
+  database.tasks.unshift({
+    id: randomUUID(),
+    title: `Reply to ${data.firstName} from ${data.channel}`,
+    status: "Open",
+    relatedType: "contact",
+    relatedId: contactId,
+    ownerName: data.ownerName,
+    dueLabel: "Within 15 min",
+    createdAt: new Date().toISOString(),
+  });
+
+  await saveDatabase(database);
+
+  return {
+    contactId,
+    opportunityId,
+    conversationId,
+  };
 }
 
 export async function createAppointment(input: unknown) {

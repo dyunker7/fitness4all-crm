@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { ingestMetaLead } from "@/lib/crm";
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const mode = searchParams.get("hub.mode");
@@ -22,16 +24,28 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const payload = await request.json();
 
+  const lead = payload?.lead ?? payload;
+
+  const result = await ingestMetaLead({
+    firstName: lead.firstName ?? lead.first_name ?? "Meta",
+    lastName: lead.lastName ?? lead.last_name ?? "Lead",
+    email: lead.email ?? "meta-lead@fitness4allcrm.com",
+    phone: lead.phone ?? "(000) 000-0000",
+    leadSource: lead.leadSource ?? lead.source ?? "Meta Lead Ad",
+    membershipInterest:
+      lead.membershipInterest ?? lead.membership_interest ?? "General membership",
+    trainingGoal: lead.trainingGoal ?? lead.training_goal ?? "Get started",
+    preferredLocationId:
+      lead.preferredLocationId ?? lead.preferred_location_id ?? "loc-midtown",
+    ownerName: lead.ownerName ?? lead.owner_name ?? "Avery Cole",
+    message: lead.message ?? "Interested in learning more about the gym.",
+    channel: lead.channel ?? "Facebook",
+  });
+
   return NextResponse.json({
     ok: true,
-    event: "meta.webhook.received",
-    next: [
-      "validate signature",
-      "normalize DM or lead ad payload",
-      "upsert contact and conversation",
-      "emit meta.dm.received or meta.lead.created",
-      "trigger workflow engine",
-    ],
+    event: "meta.lead.created",
+    recordIds: result,
     payloadPreview: payload,
   });
 }
