@@ -68,7 +68,9 @@ export async function createSessionResponse(user: SessionUser, requestUrl: strin
     .setExpirationTime("7d")
     .sign(getSecret());
 
-  const response = NextResponse.redirect(new URL("/dashboard", requestUrl));
+  const response = NextResponse.redirect(new URL("/dashboard", requestUrl), {
+    status: 303,
+  });
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",

@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.redirect(
       new URL("/login?error=invalid_credentials", request.url),
+      { status: 303 },
     );
   }
 
