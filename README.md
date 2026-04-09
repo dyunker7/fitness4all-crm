@@ -8,14 +8,15 @@ The app is also configured as a PWA so it can be installed on phones and desktop
 
 ## What is implemented
 
-- A polished dashboard-style UI for:
-  - CRM and pipeline visibility
-  - unified inbox overview
-  - calendar reminder strategies
-  - workflow automation templates
-  - launch channel coverage
-  - modular platform architecture
-  - phased roadmap visibility
+- A working CRM app for:
+  - authenticated dashboard access
+  - contacts and lead records
+  - opportunities and pipeline movement
+  - contact/deal tasks
+  - unified inbox conversations
+  - appointment scheduling and reminder tracking
+  - Meta lead intake
+  - workflow automation enrollments and execution
 - Typed domain models for:
   - contacts
   - opportunities
@@ -28,11 +29,31 @@ The app is also configured as a PWA so it can be installed on phones and desktop
 - API stubs for:
   - demo data at `/api/demo`
   - Meta webhook verification and ingestion at `/api/webhooks/meta`
+- Automation runner:
+  - due automation execution at `/api/automations/run`
+  - Vercel cron schedule in `vercel.json`
 - PWA support:
   - web app manifest
   - service worker
   - install prompt
   - app icons
+
+## Environment variables
+
+Required for hosted persistence and auth:
+
+- `DATABASE_URL`
+- `AUTH_SECRET`
+
+Optional but recommended:
+
+- `POSTGRES_URL`
+- `POSTGRES_URL_NON_POOLING`
+- `META_VERIFY_TOKEN`
+- `CRON_SECRET`
+
+When `CRON_SECRET` is set, calls to `/api/automations/run` must include an
+`Authorization: Bearer <CRON_SECRET>` header.
 
 ## Run locally
 
@@ -55,8 +76,7 @@ Then connect the repo to Vercel or run a production deployment from your preferr
 
 ## Suggested next steps
 
-1. Add authentication and persistent storage with PostgreSQL and Prisma.
-2. Build role-aware pages for contacts, opportunities, inbox, calendars, and automation builder.
-3. Wire real providers for Meta, Twilio, email, Google Calendar, and reputation sources.
-4. Add workflow runtime persistence, audit logging, and background job processing with Redis.
-5. Expand into campaigns, memberships, mobile workflows, and advanced reporting.
+1. Wire real providers for Meta, Twilio, email, Google Calendar, and reputation sources.
+2. Add audit logging and stronger multi-user permission checks.
+3. Add a visual workflow builder for editing triggers/actions from the UI.
+4. Expand into campaigns, memberships, mobile workflows, and advanced reporting.

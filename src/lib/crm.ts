@@ -907,10 +907,29 @@ function markEnrollmentCompleteIfDone(
   enrollment.status = hasQueuedRuns ? "Active" : "Completed";
 }
 
-export async function executeQueuedAutomationRuns() {
+export async function executeQueuedAutomationRuns({
+  dueOnly = false,
+  limit = 25,
+}: {
+  dueOnly?: boolean;
+  limit?: number;
+} = {}) {
   const database = await loadDatabase();
-  const queuedRuns = database.automationRuns.filter((run) => run.status === "Queued");
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const queuedRuns = database.automationRuns
+    .filter((run) => {
+      if (run.status !== "Queued") {
+        return false;
+      }
+
+      if (!dueOnly) {
+        return true;
+      }
+
+      return new Date(run.scheduledFor).getTime() <= nowDate.getTime();
+    })
+    .slice(0, limit);
   let processedCount = 0;
 
   for (const run of queuedRuns) {

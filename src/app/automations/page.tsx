@@ -35,8 +35,9 @@ export default async function AutomationsPage() {
         <div>
           <h2 className="text-xl font-semibold text-white">Execution controls</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-            Run queued workflow steps to turn automation runs into real inbox messages
-            and follow-up tasks across the CRM.
+            Vercel cron now runs due workflow steps every five minutes. Use this
+            manual control when you want to execute every queued step immediately
+            during testing or a live demo.
           </p>
         </div>
         <form action={executeQueuedAutomationRunsAction}>
