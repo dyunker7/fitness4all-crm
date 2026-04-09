@@ -7,6 +7,7 @@ import {
   CalendarClock,
   BadgePlus,
   Bot,
+  ListChecks,
 } from "lucide-react";
 
 import { logoutAction } from "@/app/actions/auth";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/automations", label: "Automations", icon: Bot },
   { href: "/meta", label: "Meta Leads", icon: BadgePlus },
+  { href: "/activity", label: "Activity", icon: ListChecks },
 ];
 
 export async function CrmShell({

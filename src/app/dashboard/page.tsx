@@ -6,6 +6,7 @@ import {
   getDashboardSnapshot,
   getPipelineStages,
   listConversations,
+  listRecentActivities,
   listOpportunities,
   listTasks,
 } from "@/lib/crm";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const snapshot = await getDashboardSnapshot();
   const conversations = (await listConversations()).slice(0, 3);
+  const activities = await listRecentActivities(6);
   const opportunities = await listOpportunities();
   const tasks = (await listTasks()).slice(0, 5);
   const stages = getPipelineStages();
@@ -138,6 +140,36 @@ export default async function DashboardPage() {
               </p>
             </Link>
           ))}
+        </div>
+      </Surface>
+
+      <Surface>
+        <h2 className="text-xl font-semibold text-white">Recent activity</h2>
+        <div className="mt-5 space-y-3">
+          {activities.length === 0 ? (
+            <p className="text-sm text-slate-400">No activity has been logged yet.</p>
+          ) : (
+            activities.map((activity) => (
+              <div
+                key={activity.id}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-medium text-white">{activity.title}</p>
+                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-200">
+                    {activity.eventType}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  {activity.description}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {activity.actorName}
+                  {activity.contactName ? ` · ${activity.contactName}` : ""}
+                </p>
+              </div>
+            ))
+          )}
         </div>
       </Surface>
     </CrmShell>

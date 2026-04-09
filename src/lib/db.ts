@@ -120,6 +120,18 @@ export type AutomationRunRecord = {
   createdAt: string;
 };
 
+export type ActivityRecord = {
+  id: string;
+  eventType: string;
+  title: string;
+  description: string;
+  actorName: string;
+  relatedType: "contact" | "opportunity" | "appointment" | "automation" | "conversation";
+  relatedId: string;
+  contactId: string | null;
+  createdAt: string;
+};
+
 export type CrmDatabase = {
   contacts: ContactRecord[];
   opportunities: OpportunityRecord[];
@@ -131,6 +143,7 @@ export type CrmDatabase = {
   reminders: ReminderRecord[];
   automationEnrollments: AutomationEnrollmentRecord[];
   automationRuns: AutomationRunRecord[];
+  activities: ActivityRecord[];
 };
 
 const seededPasswordHash = hashSync("fitness4all123", 10);
@@ -308,6 +321,19 @@ const defaultDatabase: CrmDatabase = {
       createdAt: new Date().toISOString(),
     },
   ],
+  activities: [
+    {
+      id: "activity-seed-1",
+      eventType: "crm.seeded",
+      title: "CRM seeded with starter sales data",
+      description: "Fitness4All demo contacts, opportunities, inbox items, and schedules were initialized.",
+      actorName: "System",
+      relatedType: "automation",
+      relatedId: "system",
+      contactId: null,
+      createdAt: new Date().toISOString(),
+    },
+  ],
 };
 
 const candidatePaths = [
@@ -376,7 +402,23 @@ function loadFileDatabase() {
   }
 
   const content = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(content) as CrmDatabase;
+  return normalizeDatabase(JSON.parse(content) as Partial<CrmDatabase>);
+}
+
+function normalizeDatabase(data: Partial<CrmDatabase>): CrmDatabase {
+  return {
+    contacts: data.contacts ?? [],
+    opportunities: data.opportunities ?? [],
+    tasks: data.tasks ?? [],
+    users: data.users ?? [],
+    conversations: data.conversations ?? [],
+    messages: data.messages ?? [],
+    appointments: data.appointments ?? [],
+    reminders: data.reminders ?? [],
+    automationEnrollments: data.automationEnrollments ?? [],
+    automationRuns: data.automationRuns ?? [],
+    activities: data.activities ?? [],
+  };
 }
 
 async function ensurePostgres() {
@@ -520,6 +562,20 @@ async function ensurePostgres() {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS activities (
+          id TEXT PRIMARY KEY,
+          event_type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          actor_name TEXT NOT NULL,
+          related_type TEXT NOT NULL,
+          related_id TEXT NOT NULL,
+          contact_id TEXT,
+          created_at TEXT NOT NULL
+        )
+      `;
+
       const existingUsers = await sql`SELECT COUNT(*)::int AS count FROM users`;
       if (existingUsers[0].count === 0) {
         await savePostgresDatabase(defaultDatabase);
@@ -546,7 +602,7 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
     return structuredClone(defaultDatabase);
   }
 
-  const [contacts, opportunities, tasks, users, conversations, messages, appointments, reminders, automationEnrollments, automationRuns] = await withTimeout(
+  const [contacts, opportunities, tasks, users, conversations, messages, appointments, reminders, automationEnrollments, automationRuns, activities] = await withTimeout(
     Promise.all([
       sql`SELECT * FROM contacts ORDER BY created_at DESC`,
       sql`SELECT * FROM opportunities ORDER BY created_at DESC`,
@@ -558,6 +614,7 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       sql`SELECT * FROM reminders ORDER BY created_at ASC`,
       sql`SELECT * FROM automation_enrollments ORDER BY created_at DESC`,
       sql`SELECT * FROM automation_runs ORDER BY scheduled_for ASC`,
+      sql`SELECT * FROM activities ORDER BY created_at DESC`,
     ]),
     "Postgres query",
   );
@@ -667,6 +724,17 @@ async function loadPostgresDatabase(): Promise<CrmDatabase> {
       scheduledFor: row.scheduled_for,
       createdAt: row.created_at,
     })),
+    activities: activities.map((row) => ({
+      id: row.id,
+      eventType: row.event_type,
+      title: row.title,
+      description: row.description,
+      actorName: row.actor_name,
+      relatedType: row.related_type,
+      relatedId: row.related_id,
+      contactId: row.contact_id,
+      createdAt: row.created_at,
+    })),
   };
 }
 
@@ -684,6 +752,7 @@ async function savePostgresDatabase(data: CrmDatabase) {
       await tx`DELETE FROM conversations`;
       await tx`DELETE FROM reminders`;
       await tx`DELETE FROM appointments`;
+      await tx`DELETE FROM activities`;
       await tx`DELETE FROM automation_runs`;
       await tx`DELETE FROM automation_enrollments`;
       await tx`DELETE FROM opportunities`;
@@ -801,6 +870,18 @@ async function savePostgresDatabase(data: CrmDatabase) {
           ) VALUES (
             ${run.id}, ${run.enrollmentId}, ${run.templateId}, ${run.event},
             ${run.stepLabel}, ${run.status}, ${run.scheduledFor}, ${run.createdAt}
+          )
+        `;
+      }
+
+      for (const activity of data.activities) {
+        await tx`
+          INSERT INTO activities (
+            id, event_type, title, description, actor_name, related_type, related_id, contact_id, created_at
+          ) VALUES (
+            ${activity.id}, ${activity.eventType}, ${activity.title}, ${activity.description},
+            ${activity.actorName}, ${activity.relatedType}, ${activity.relatedId},
+            ${activity.contactId}, ${activity.createdAt}
           )
         `;
       }

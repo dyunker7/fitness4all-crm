@@ -4,7 +4,12 @@ import { notFound } from "next/navigation";
 import { createTaskAction, updateContactAction, updateTaskStatusAction } from "@/app/actions/crm";
 import { Surface } from "@/components/crm-cards";
 import { CrmShell } from "@/components/crm-shell";
-import { getContactById, listOpportunitiesForContact, listTasksForRecord } from "@/lib/crm";
+import {
+  getContactById,
+  listActivitiesForContact,
+  listOpportunitiesForContact,
+  listTasksForRecord,
+} from "@/lib/crm";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +27,7 @@ export default async function ContactDetailPage({
 
   const opportunities = await listOpportunitiesForContact(id);
   const tasks = await listTasksForRecord("contact", id);
+  const activities = await listActivitiesForContact(id);
 
   return (
     <CrmShell
@@ -130,6 +136,37 @@ export default async function ContactDetailPage({
                         Mark {task.status === "Open" ? "done" : "open"}
                       </button>
                     </form>
+                  </div>
+                ))
+              )}
+            </div>
+          </Surface>
+
+          <Surface>
+            <h2 className="text-xl font-semibold text-white">Activity history</h2>
+            <div className="mt-5 space-y-3">
+              {activities.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No activity has been logged for this contact yet.
+                </p>
+              ) : (
+                activities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="font-medium text-white">{activity.title}</p>
+                      <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-100">
+                        {activity.actorName}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      {activity.description}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {activity.eventType}
+                    </p>
                   </div>
                 ))
               )}

@@ -221,6 +221,19 @@ export type CrmAutomationRun = {
   createdAt: string;
 };
 
+export type CrmActivity = {
+  id: string;
+  eventType: string;
+  title: string;
+  description: string;
+  actorName: string;
+  relatedType: "contact" | "opportunity" | "appointment" | "automation" | "conversation";
+  relatedId: string;
+  contactId: string | null;
+  contactName: string | null;
+  createdAt: string;
+};
+
 const automationTemplates: CrmAutomationTemplate[] = [
   ...demoData.workflowTemplates,
   {
@@ -273,6 +286,32 @@ function mapOpportunityRow(
     outcome: row.outcome as "Open" | "Won",
     createdAt: row.createdAt as string,
   };
+}
+
+function addActivity(
+  database: Awaited<ReturnType<typeof loadDatabase>>,
+  input: {
+    eventType: string;
+    title: string;
+    description: string;
+    actorName?: string;
+    relatedType: CrmActivity["relatedType"];
+    relatedId: string;
+    contactId?: string | null;
+    createdAt?: string;
+  },
+) {
+  database.activities.unshift({
+    id: randomUUID(),
+    eventType: input.eventType,
+    title: input.title,
+    description: input.description,
+    actorName: input.actorName ?? "System",
+    relatedType: input.relatedType,
+    relatedId: input.relatedId,
+    contactId: input.contactId ?? null,
+    createdAt: input.createdAt ?? new Date().toISOString(),
+  });
 }
 
 export async function getDashboardSnapshot() {
@@ -339,6 +378,30 @@ export async function listTasks() {
 
       return a.status === "Open" ? -1 : 1;
     });
+}
+
+export async function listRecentActivities(limit = 10) {
+  const database = await loadDatabase();
+
+  return database.activities
+    .map((activity) => {
+      const contact = activity.contactId
+        ? database.contacts.find((item) => item.id === activity.contactId)
+        : null;
+
+      return {
+        ...activity,
+        contactName: contact ? `${contact.firstName} ${contact.lastName}` : null,
+      } satisfies CrmActivity;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
+}
+
+export async function listActivitiesForContact(contactId: string) {
+  return (await listRecentActivities(100)).filter(
+    (activity) => activity.contactId === contactId,
+  );
 }
 
 export async function listConversations() {
@@ -462,9 +525,11 @@ export async function listOpportunitiesForContact(contactId: string) {
 export async function createContact(input: unknown) {
   const data = contactSchema.parse(input);
   const database = await loadDatabase();
+  const contactId = randomUUID();
+  const now = new Date().toISOString();
 
   database.contacts.unshift({
-      id: randomUUID(),
+      id: contactId,
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
@@ -477,8 +542,18 @@ export async function createContact(input: unknown) {
       trialStatus: "Not started",
       waiverStatus: "Pending",
       consentStatus: "Pending",
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     });
+  addActivity(database, {
+    eventType: "contact.created",
+    title: `Created contact ${data.firstName} ${data.lastName}`,
+    description: `${data.leadSource} lead interested in ${data.membershipInterest}.`,
+    actorName: "CRM",
+    relatedType: "contact",
+    relatedId: contactId,
+    contactId,
+    createdAt: now,
+  });
 
   await saveDatabase(database);
 }
@@ -486,9 +561,12 @@ export async function createContact(input: unknown) {
 export async function createOpportunity(input: unknown) {
   const data = opportunitySchema.parse(input);
   const database = await loadDatabase();
+  const opportunityId = randomUUID();
+  const contact = database.contacts.find((item) => item.id === data.contactId);
+  const now = new Date().toISOString();
 
   database.opportunities.unshift({
-      id: randomUUID(),
+      id: opportunityId,
       contactId: data.contactId,
       pipelineId: "pipeline-sales",
       stageName: data.stageName,
@@ -496,8 +574,18 @@ export async function createOpportunity(input: unknown) {
       value: data.value,
       nextAction: data.nextAction,
       outcome: "Open",
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     });
+  addActivity(database, {
+    eventType: "opportunity.created",
+    title: "Created opportunity",
+    description: `${contact ? `${contact.firstName} ${contact.lastName}` : "Lead"} entered ${data.stageName} with $${data.value.toLocaleString()} projected value.`,
+    actorName: data.ownerName,
+    relatedType: "opportunity",
+    relatedId: opportunityId,
+    contactId: data.contactId,
+    createdAt: now,
+  });
 
   await saveDatabase(database);
 }
@@ -518,6 +606,15 @@ export async function updateContact(input: unknown) {
   contact.lifecycleStage = data.lifecycleStage;
   contact.membershipInterest = data.membershipInterest;
   contact.trainingGoal = data.trainingGoal;
+  addActivity(database, {
+    eventType: "contact.updated",
+    title: "Updated contact profile",
+    description: `${contact.firstName} ${contact.lastName} is now marked ${contact.lifecycleStage}.`,
+    actorName: "CRM",
+    relatedType: "contact",
+    relatedId: contact.id,
+    contactId: contact.id,
+  });
   await saveDatabase(database);
 }
 
@@ -533,6 +630,15 @@ export async function updateOpportunity(input: unknown) {
   opportunity.ownerName = data.ownerName;
   opportunity.value = data.value;
   opportunity.nextAction = data.nextAction;
+  addActivity(database, {
+    eventType: "opportunity.updated",
+    title: "Updated opportunity details",
+    description: `${data.ownerName} set the deal value to $${data.value.toLocaleString()} and updated the next action.`,
+    actorName: data.ownerName,
+    relatedType: "opportunity",
+    relatedId: opportunity.id,
+    contactId: opportunity.contactId,
+  });
   await saveDatabase(database);
 }
 
@@ -547,22 +653,48 @@ export async function updateOpportunityStage(input: unknown) {
 
   opportunity.stageName = data.stageName;
   opportunity.outcome = data.outcome;
+  addActivity(database, {
+    eventType: "opportunity.stage_changed",
+    title: `Moved opportunity to ${data.stageName}`,
+    description: `Outcome is now ${data.outcome}.`,
+    actorName: opportunity.ownerName,
+    relatedType: "opportunity",
+    relatedId: opportunity.id,
+    contactId: opportunity.contactId,
+  });
   await saveDatabase(database);
 }
 
 export async function createTask(input: unknown) {
   const data = taskSchema.parse(input);
   const database = await loadDatabase();
+  const taskId = randomUUID();
+  const contactId =
+    data.relatedType === "contact"
+      ? data.relatedId
+      : database.opportunities.find((item) => item.id === data.relatedId)?.contactId ??
+        null;
+  const now = new Date().toISOString();
 
   database.tasks.unshift({
-    id: randomUUID(),
+    id: taskId,
     title: data.title,
     status: "Open",
     relatedType: data.relatedType,
     relatedId: data.relatedId,
     ownerName: data.ownerName,
     dueLabel: data.dueLabel,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+  });
+  addActivity(database, {
+    eventType: "task.created",
+    title: `Created task: ${data.title}`,
+    description: `${data.ownerName} owns this follow-up, due ${data.dueLabel}.`,
+    actorName: data.ownerName,
+    relatedType: data.relatedType,
+    relatedId: data.relatedId,
+    contactId,
+    createdAt: now,
   });
 
   await saveDatabase(database);
@@ -579,13 +711,15 @@ export async function createMessage(input: unknown) {
     return;
   }
 
+  const now = new Date().toISOString();
+
   database.messages.push({
     id: randomUUID(),
     conversationId: data.conversationId,
     direction: "outbound",
     body: data.body,
     sentBy: data.sentBy,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   });
 
   conversation.lastMessage = data.body;
@@ -593,6 +727,16 @@ export async function createMessage(input: unknown) {
   conversation.nextResponseDueAt = new Date(
     Date.now() + 1000 * 60 * 60 * 24,
   ).toISOString();
+  addActivity(database, {
+    eventType: "message.sent",
+    title: `Sent ${conversation.channel} message`,
+    description: data.body,
+    actorName: data.sentBy,
+    relatedType: "conversation",
+    relatedId: conversation.id,
+    contactId: conversation.contactId,
+    createdAt: now,
+  });
   await saveDatabase(database);
 }
 
@@ -664,6 +808,16 @@ export async function ingestMetaLead(input: unknown) {
     dueLabel: "Within 15 min",
     createdAt: now.toISOString(),
   });
+  addActivity(database, {
+    eventType: "meta.lead.created",
+    title: `Ingested ${data.channel} lead`,
+    description: `${data.firstName} ${data.lastName} was added to contacts, opportunities, inbox, tasks, and automations.`,
+    actorName: data.channel,
+    relatedType: "contact",
+    relatedId: contactId,
+    contactId,
+    createdAt: now.toISOString(),
+  });
 
   database.automationEnrollments.unshift({
     id: automationEnrollmentId,
@@ -709,6 +863,16 @@ export async function ingestMetaLead(input: unknown) {
       createdAt: now.toISOString(),
     },
   );
+  addActivity(database, {
+    eventType: "workflow.triggered",
+    title: "Started Meta speed-to-lead automation",
+    description: "Queued social reply and fallback call task for this new lead.",
+    actorName: "Automation",
+    relatedType: "automation",
+    relatedId: automationEnrollmentId,
+    contactId,
+    createdAt: now.toISOString(),
+  });
 
   await saveDatabase(database);
 
@@ -757,6 +921,16 @@ export async function createAppointment(input: unknown) {
       createdAt: now.toISOString(),
     },
   );
+  addActivity(database, {
+    eventType: "appointment.booked",
+    title: `Booked ${data.appointmentType}`,
+    description: `${data.title} is scheduled at ${data.locationName}.`,
+    actorName: data.ownerName,
+    relatedType: "appointment",
+    relatedId: appointmentId,
+    contactId: data.contactId,
+    createdAt: now.toISOString(),
+  });
 
   database.automationEnrollments.unshift({
     id: automationEnrollmentId,
@@ -792,6 +966,16 @@ export async function createAppointment(input: unknown) {
       createdAt: now.toISOString(),
     },
   );
+  addActivity(database, {
+    eventType: "workflow.triggered",
+    title: "Started tour reminder automation",
+    description: "Queued appointment reminder and attendance rescue steps.",
+    actorName: "Automation",
+    relatedType: "automation",
+    relatedId: automationEnrollmentId,
+    contactId: data.contactId,
+    createdAt: now.toISOString(),
+  });
 
   await saveDatabase(database);
 }
@@ -806,6 +990,15 @@ export async function updateAppointmentStatus(input: unknown) {
   }
 
   appointment.status = data.status;
+  addActivity(database, {
+    eventType: "appointment.status_changed",
+    title: `Marked appointment ${data.status}`,
+    description: `${appointment.title} is now ${data.status}.`,
+    actorName: appointment.ownerName,
+    relatedType: "appointment",
+    relatedId: appointment.id,
+    contactId: appointment.contactId,
+  });
 
   if (data.status !== "Scheduled") {
     for (const enrollment of database.automationEnrollments) {
@@ -854,6 +1047,16 @@ export async function enrollAutomation(input: unknown) {
       createdAt: now.toISOString(),
     })),
   );
+  addActivity(database, {
+    eventType: "workflow.triggered",
+    title: `Started ${template.name}`,
+    description: `Queued ${Math.min(template.actions.length, 3)} automation steps for this contact.`,
+    actorName: data.ownerName,
+    relatedType: "automation",
+    relatedId: enrollmentId,
+    contactId: data.contactId,
+    createdAt: now.toISOString(),
+  });
 
   await saveDatabase(database);
 }
@@ -985,6 +1188,16 @@ export async function executeQueuedAutomationRuns({
       conversation.nextResponseDueAt = new Date(
         Date.now() + 1000 * 60 * 60 * 12,
       ).toISOString();
+      addActivity(database, {
+        eventType: "automation.message_sent",
+        title: `Automation sent message: ${run.stepLabel}`,
+        description: body,
+        actorName: "Automation",
+        relatedType: "automation",
+        relatedId: enrollment.id,
+        contactId: enrollment.contactId,
+        createdAt: now,
+      });
     } else {
       database.tasks.unshift({
         id: randomUUID(),
@@ -994,6 +1207,16 @@ export async function executeQueuedAutomationRuns({
         relatedId: enrollment.contactId,
         ownerName: enrollment.ownerName,
         dueLabel: "Today",
+        createdAt: now,
+      });
+      addActivity(database, {
+        eventType: "automation.task_created",
+        title: `Automation created task: ${run.stepLabel}`,
+        description: `${enrollment.ownerName} owns the next follow-up for ${contactName}.`,
+        actorName: "Automation",
+        relatedType: "automation",
+        relatedId: enrollment.id,
+        contactId: enrollment.contactId,
         createdAt: now,
       });
     }
@@ -1021,6 +1244,19 @@ export async function updateTaskStatus(input: unknown) {
   }
 
   task.status = data.status;
+  addActivity(database, {
+    eventType: "task.status_changed",
+    title: `Marked task ${data.status}`,
+    description: task.title,
+    actorName: task.ownerName,
+    relatedType: task.relatedType,
+    relatedId: task.relatedId,
+    contactId:
+      task.relatedType === "contact"
+        ? task.relatedId
+        : database.opportunities.find((item) => item.id === task.relatedId)?.contactId ??
+          null,
+  });
   await saveDatabase(database);
 }
 
