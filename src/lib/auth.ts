@@ -5,6 +5,8 @@ import { SignJWT, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { loadDatabase } from "@/lib/db";
+import { hasPermission, type CrmPermission } from "@/lib/permissions";
+import type { UserRole } from "@/lib/types";
 
 const SESSION_COOKIE = "f4a_session";
 
@@ -12,7 +14,7 @@ type SessionUser = {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
 };
 
 const seededUsers: Array<
@@ -150,6 +152,16 @@ export async function requireSession() {
   const session = await getSession();
   if (!session) {
     redirect("/login");
+  }
+
+  return session;
+}
+
+export async function requirePermission(permission: CrmPermission) {
+  const session = await requireSession();
+
+  if (!hasPermission(session.role, permission)) {
+    redirect("/forbidden");
   }
 
   return session;

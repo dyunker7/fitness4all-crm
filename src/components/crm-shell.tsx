@@ -12,17 +12,68 @@ import {
 
 import { logoutAction } from "@/app/actions/auth";
 import { requireSession } from "@/lib/auth";
+import { hasPermission, type CrmPermission } from "@/lib/permissions";
+import type { UserRole } from "@/lib/types";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/opportunities", label: "Opportunities", icon: BriefcaseBusiness },
-  { href: "/inbox", label: "Inbox", icon: MessageCircleMore },
-  { href: "/schedule", label: "Schedule", icon: CalendarClock },
-  { href: "/automations", label: "Automations", icon: Bot },
-  { href: "/meta", label: "Meta Leads", icon: BadgePlus },
-  { href: "/activity", label: "Activity", icon: ListChecks },
+const navItems: Array<{
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission: CrmPermission;
+}> = [
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    permission: "dashboard:view",
+  },
+  {
+    href: "/contacts",
+    label: "Contacts",
+    icon: Users,
+    permission: "contacts:view",
+  },
+  {
+    href: "/opportunities",
+    label: "Opportunities",
+    icon: BriefcaseBusiness,
+    permission: "opportunities:view",
+  },
+  {
+    href: "/inbox",
+    label: "Inbox",
+    icon: MessageCircleMore,
+    permission: "inbox:view",
+  },
+  {
+    href: "/schedule",
+    label: "Schedule",
+    icon: CalendarClock,
+    permission: "schedule:view",
+  },
+  {
+    href: "/automations",
+    label: "Automations",
+    icon: Bot,
+    permission: "automations:view",
+  },
+  {
+    href: "/meta",
+    label: "Meta Leads",
+    icon: BadgePlus,
+    permission: "meta:view",
+  },
+  {
+    href: "/activity",
+    label: "Activity",
+    icon: ListChecks,
+    permission: "activity:view",
+  },
 ];
+
+export function canRoleAccess(role: UserRole, permission: CrmPermission) {
+  return hasPermission(role, permission);
+}
 
 export async function CrmShell({
   children,
@@ -34,6 +85,9 @@ export async function CrmShell({
   subtitle: string;
 }) {
   const session = await requireSession();
+  const visibleNavItems = navItems.filter((item) =>
+    hasPermission(session.role, item.permission),
+  );
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.12),_transparent_30%),linear-gradient(180deg,_#05111f_0%,_#081828_52%,_#0f172a_100%)]">
@@ -47,7 +101,7 @@ export async function CrmShell({
           </div>
 
           <nav className="space-y-2">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

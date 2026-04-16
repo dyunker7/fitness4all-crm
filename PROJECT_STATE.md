@@ -1,6 +1,6 @@
 # Fitness4All CRM Project State
 
-Last updated: 2026-04-09
+Last updated: 2026-04-16
 
 ## Current app status
 
@@ -18,6 +18,7 @@ This repository is a live Next.js CRM for Fitness4All with these working areas:
 - Manual automation execution
 - Scheduled automation execution with Vercel cron
 - Activity and audit history
+- Role-aware route and action permissions
 
 Payment processing is intentionally out of scope.
 
@@ -79,6 +80,8 @@ Current shared secrets that were used in setup:
 - Login handler exists at `src/app/api/login/route.ts`
 - Session and seeded auth logic live in `src/lib/auth.ts`
 - Middleware protection lives in `middleware.ts`
+- Shared permission model lives in `src/lib/permissions.ts`
+- Forbidden page exists at `src/app/forbidden/page.tsx`
 
 ### Data layer
 
@@ -124,6 +127,7 @@ Current shared secrets that were used in setup:
 - `8e2faf8` Execute queued automation steps
 - `4684e44` Run due automations on Vercel cron
 - `22ce6ec` Add CRM activity audit trail
+- `TBD after current session` Add role-aware CRM permissions
 
 ## Known operational history
 

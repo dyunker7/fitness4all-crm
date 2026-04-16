@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requirePermission } from "@/lib/auth";
 import {
   createAppointment,
   createContact,
@@ -19,6 +20,8 @@ import {
 } from "@/lib/crm";
 
 export async function createContactAction(formData: FormData) {
+  await requirePermission("contacts:edit");
+
   await createContact({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
@@ -35,6 +38,8 @@ export async function createContactAction(formData: FormData) {
 }
 
 export async function createOpportunityAction(formData: FormData) {
+  await requirePermission("opportunities:edit");
+
   await createOpportunity({
     contactId: formData.get("contactId"),
     stageName: formData.get("stageName"),
@@ -48,6 +53,8 @@ export async function createOpportunityAction(formData: FormData) {
 }
 
 export async function updateContactAction(formData: FormData) {
+  await requirePermission("contacts:edit");
+
   await updateContact({
     id: formData.get("id"),
     firstName: formData.get("firstName"),
@@ -66,6 +73,8 @@ export async function updateContactAction(formData: FormData) {
 }
 
 export async function updateOpportunityAction(formData: FormData) {
+  await requirePermission("opportunities:edit");
+
   await updateOpportunity({
     id: formData.get("id"),
     ownerName: formData.get("ownerName"),
@@ -80,6 +89,8 @@ export async function updateOpportunityAction(formData: FormData) {
 }
 
 export async function updateOpportunityStageAction(formData: FormData) {
+  await requirePermission("opportunities:edit");
+
   await updateOpportunityStage({
     id: formData.get("id"),
     stageName: formData.get("stageName"),
@@ -92,6 +103,8 @@ export async function updateOpportunityStageAction(formData: FormData) {
 }
 
 export async function createTaskAction(formData: FormData) {
+  await requirePermission("tasks:edit");
+
   await createTask({
     title: formData.get("title"),
     relatedType: formData.get("relatedType"),
@@ -115,6 +128,8 @@ export async function createTaskAction(formData: FormData) {
 }
 
 export async function updateTaskStatusAction(formData: FormData) {
+  await requirePermission("tasks:edit");
+
   await updateTaskStatus({
     id: formData.get("id"),
     status: formData.get("status"),
@@ -126,6 +141,8 @@ export async function updateTaskStatusAction(formData: FormData) {
 }
 
 export async function createMessageAction(formData: FormData) {
+  await requirePermission("inbox:send");
+
   const conversationId = String(formData.get("conversationId"));
 
   await createMessage({
@@ -140,6 +157,8 @@ export async function createMessageAction(formData: FormData) {
 }
 
 export async function createAppointmentAction(formData: FormData) {
+  await requirePermission("schedule:edit");
+
   await createAppointment({
     contactId: formData.get("contactId"),
     opportunityId: formData.get("opportunityId"),
@@ -156,6 +175,8 @@ export async function createAppointmentAction(formData: FormData) {
 }
 
 export async function updateAppointmentStatusAction(formData: FormData) {
+  await requirePermission("schedule:edit");
+
   await updateAppointmentStatus({
     id: formData.get("id"),
     status: formData.get("status"),
@@ -167,6 +188,8 @@ export async function updateAppointmentStatusAction(formData: FormData) {
 }
 
 export async function ingestMetaLeadAction(formData: FormData) {
+  await requirePermission("meta:ingest");
+
   await ingestMetaLead({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
@@ -189,6 +212,8 @@ export async function ingestMetaLeadAction(formData: FormData) {
 }
 
 export async function enrollAutomationAction(formData: FormData) {
+  await requirePermission("automations:edit");
+
   await enrollAutomation({
     templateId: formData.get("templateId"),
     sourceType: formData.get("sourceType"),
@@ -205,6 +230,8 @@ export async function enrollAutomationAction(formData: FormData) {
 }
 
 export async function executeQueuedAutomationRunsAction() {
+  await requirePermission("automations:edit");
+
   await executeQueuedAutomationRuns();
 
   revalidatePath("/dashboard");
